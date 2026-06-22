@@ -40,12 +40,12 @@ func gq(n string) *Q {
 }
 
 func h(w http.ResponseWriter, r *http.Request) {
-	n := r.URL.Path[1:]
-	if n == "" {
+	name := r.URL.Path[1:]
+	if name == "" {
 		w.WriteHeader(400)
 		return
 	}
-	q := gq(n)
+	q := gq(name)
 	switch r.Method {
 	case "PUT":
 		v := r.URL.Query().Get("v")
@@ -90,6 +90,13 @@ func h(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(m))
 		case <-time.After(to):
 			q.Lock()
+			select {
+			case m := <-wc:
+				q.Unlock()
+				w.Write([]byte(m))
+				return
+			default:
+			}
 			for i, c := range q.waiters {
 				if c == wc {
 					q.waiters = append(q.waiters[:i], q.waiters[i+1:]...)
