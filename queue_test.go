@@ -20,38 +20,38 @@ func TestQueue(t *testing.T) {
 
 	// PUT без v → 400
 	w := httptest.NewRecorder()
-	handler(w, req("PUT", "/test", ""))
+	qHandler(w, req("PUT", "/test", ""))
 	if w.Code != 400 {
 		t.Errorf("PUT no v: got %d", w.Code)
 	}
 
 	// PUT → 200
 	w = httptest.NewRecorder()
-	handler(w, req("PUT", "/test", "v=a"))
+	qHandler(w, req("PUT", "/test", "v=a"))
 	if w.Code != 200 {
 		t.Errorf("PUT a: got %d", w.Code)
 	}
 	w = httptest.NewRecorder()
-	handler(w, req("PUT", "/test", "v=b"))
+	qHandler(w, req("PUT", "/test", "v=b"))
 	if w.Code != 200 {
 		t.Errorf("PUT b: got %d", w.Code)
 	}
 
 	// GET FIFO
 	w = httptest.NewRecorder()
-	handler(w, req("GET", "/test", ""))
+	qHandler(w, req("GET", "/test", ""))
 	if w.Code != 200 || w.Body.String() != "a" {
 		t.Errorf("GET a: %d/%s", w.Code, w.Body)
 	}
 	w = httptest.NewRecorder()
-	handler(w, req("GET", "/test", ""))
+	qHandler(w, req("GET", "/test", ""))
 	if w.Code != 200 || w.Body.String() != "b" {
 		t.Errorf("GET b: %d/%s", w.Code, w.Body)
 	}
 
 	// GET из пустой → 404
 	w = httptest.NewRecorder()
-	handler(w, req("GET", "/test", ""))
+	qHandler(w, req("GET", "/test", ""))
 	if w.Code != 404 {
 		t.Errorf("GET empty: got %d", w.Code)
 	}
@@ -63,10 +63,10 @@ func TestQueue(t *testing.T) {
 		defer wg.Done()
 		time.Sleep(300 * time.Millisecond)
 		w2 := httptest.NewRecorder()
-		handler(w2, req("PUT", "/t2", "v=late"))
+		qHandler(w2, req("PUT", "/t2", "v=late"))
 	}()
 	w = httptest.NewRecorder()
-	handler(w, req("GET", "/t2", "timeout=2"))
+	qHandler(w, req("GET", "/t2", "timeout=2"))
 	if w.Code != 200 || w.Body.String() != "late" {
 		t.Errorf("GET late: %d/%s", w.Code, w.Body)
 	}
@@ -78,10 +78,10 @@ func TestQueue(t *testing.T) {
 		defer wg.Done()
 		time.Sleep(1500 * time.Millisecond)
 		w2 := httptest.NewRecorder()
-		handler(w2, req("PUT", "/t2", "v=late"))
+		qHandler(w2, req("PUT", "/t2", "v=late"))
 	}()
 	w = httptest.NewRecorder()
-	handler(w, req("GET", "/t2", "timeout=1"))
+	qHandler(w, req("GET", "/t2", "timeout=1"))
 	if w.Code != 404 || w.Body.String() == "late" {
 		t.Errorf("GET late: %d/%s", w.Code, w.Body)
 	}
@@ -89,7 +89,7 @@ func TestQueue(t *testing.T) {
 
 	// GET с timeout=1, сообщение не приходит → 404
 	w = httptest.NewRecorder()
-	handler(w, req("GET", "/t3", "timeout=1"))
+	qHandler(w, req("GET", "/t3", "timeout=1"))
 	if w.Code != 404 {
 		t.Errorf("GET timeout: got %d", w.Code)
 	}
@@ -104,7 +104,7 @@ func TestQueue(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		w := httptest.NewRecorder()
-		handler(w, req("GET", "/t4", "timeout=3"))
+		qHandler(w, req("GET", "/t4", "timeout=3"))
 		mu.Lock()
 		if w.Code == 200 {
 			res1 = w.Body.String()
@@ -116,7 +116,7 @@ func TestQueue(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		w := httptest.NewRecorder()
-		handler(w, req("GET", "/t4", "timeout=3"))
+		qHandler(w, req("GET", "/t4", "timeout=3"))
 		mu.Lock()
 		if w.Code == 200 {
 			res2 = w.Body.String()
@@ -126,8 +126,8 @@ func TestQueue(t *testing.T) {
 	}()
 	time.Sleep(100 * time.Millisecond) // оба подписались
 	// Два PUT подряд
-	handler(httptest.NewRecorder(), req("PUT", "/t4", "v=first"))
-	handler(httptest.NewRecorder(), req("PUT", "/t4", "v=second"))
+	qHandler(httptest.NewRecorder(), req("PUT", "/t4", "v=first"))
+	qHandler(httptest.NewRecorder(), req("PUT", "/t4", "v=second"))
 	wg.Wait()
 	if !done1 || !done2 {
 		t.Error("waiters didn't receive")
@@ -139,7 +139,7 @@ func TestQueue(t *testing.T) {
 
 func TestEmptyQueueName(t *testing.T) {
 	w := httptest.NewRecorder()
-	handler(w, req("GET", "/", ""))
+	qHandler(w, req("GET", "/", ""))
 	if w.Code != 400 {
 		t.Errorf("empty queue: got %d", w.Code)
 	}
@@ -153,18 +153,18 @@ func TestConcurrentPutGet(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			w := httptest.NewRecorder()
-			handler(w, req("PUT", "/conc", "v="+string(rune('0'+n))))
+			qHandler(w, req("PUT", "/conc", "v="+string(rune('0'+n))))
 		}(i)
 		go func() {
 			defer wg.Done()
 			w := httptest.NewRecorder()
-			handler(w, req("GET", "/conc", "timeout=1"))
+			qHandler(w, req("GET", "/conc", "timeout=1"))
 		}()
 	}
 	wg.Wait()
 	// Проверяем, что очередь пуста
 	w := httptest.NewRecorder()
-	handler(w, req("GET", "/conc", ""))
+	qHandler(w, req("GET", "/conc", ""))
 	if w.Code != 404 {
 		t.Errorf("conc end: got %d", w.Code)
 	}

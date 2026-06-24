@@ -25,6 +25,11 @@ var (
 	NotFoundError = errors.New("not found")
 )
 
+const (
+	DefaultPort     = ":8080"
+	ShutdownTimeout = 10 * time.Second
+)
+
 func (q *Queue) Put(v string) {
 	q.Lock()
 	defer q.Unlock()
@@ -89,7 +94,7 @@ func GetQueue(name string) *Queue {
 	return q
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func qHandler(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Path[1:]
 	if name == "" {
 		w.WriteHeader(400)
@@ -124,13 +129,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	port := ":8080"
+	port := DefaultPort
 	if len(os.Args) > 1 {
 		port = ":" + os.Args[1]
 	}
 
 	srv := &http.Server{Addr: port}
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/", qHandler)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -144,7 +149,7 @@ func main() {
 
 	log.Println("Server started")
 	<-ctx.Done()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), ShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Shutdown error: %v", err)
